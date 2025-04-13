@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/reallyliri/docker-decompose/decompose"
+	"github.com/shawiizz/docker-decompose/decompose"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"

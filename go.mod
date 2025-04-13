@@ -1,4 +1,4 @@
-module github.com/reallyliri/docker-decompose
+module github.com/shawiizz/docker-decompose
 
 go 1.17
 

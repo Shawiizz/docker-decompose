@@ -208,7 +208,11 @@ func (ctx *context) constructRunCommand(service *types.ServiceConfig, imageName 
 	builder := &strings.Builder{}
 	builder.WriteString("docker run -d ")
 
-	writeFlagArg(builder, "--name", service.Name)
+	containerName := service.ContainerName
+	if containerName == "" {
+		containerName = service.Name
+	}
+	writeFlagArg(builder, "--name", containerName)
 
 	if len(service.Entrypoint) > 0 {
 		builder.WriteString("--entrypoint ")
