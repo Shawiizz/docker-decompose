@@ -19,15 +19,18 @@ var allowedRestartValues = map[string]bool{
 }
 
 type context struct {
-	includeServiceNames   []string
-	serviceDependencies   map[string]map[string]bool
-	buildCommandsByName   map[string]string
-	runCommandsByName     map[string]string
-	networkCommandsByName map[string]string
-	usedNetworks          map[string]bool
-	restartFlag           string
-	volumeNameToPath      map[string]string
-	project               *types.Project
+	includeServiceNames           []string
+	serviceDependencies           map[string]map[string]bool
+	buildCommandsByName           map[string]string
+	stopContainersCommandByName   map[string]string
+	removeContainersCommandByName map[string]string
+	removeImagesCommandByName     map[string]string
+	runCommandsByName             map[string]string
+	networkCommandsByName         map[string]string
+	usedNetworks                  map[string]bool
+	restartFlag                   string
+	volumeNameToPath              map[string]string
+	project                       *types.Project
 }
 
 func Decompose(opts *Options) (commands []string, err error) {
@@ -36,15 +39,18 @@ func Decompose(opts *Options) (commands []string, err error) {
 		return nil, err
 	}
 	ctx := &context{
-		serviceDependencies:   map[string]map[string]bool{},
-		buildCommandsByName:   map[string]string{},
-		runCommandsByName:     map[string]string{},
-		networkCommandsByName: map[string]string{},
-		usedNetworks:          map[string]bool{},
-		restartFlag:           opts.restart,
-		volumeNameToPath:      map[string]string{},
-		includeServiceNames:   opts.serviceNames,
-		project:               project,
+		serviceDependencies:           map[string]map[string]bool{},
+		buildCommandsByName:           map[string]string{},
+		stopContainersCommandByName:   map[string]string{},
+		removeContainersCommandByName: map[string]string{},
+		removeImagesCommandByName:     map[string]string{},
+		runCommandsByName:             map[string]string{},
+		networkCommandsByName:         map[string]string{},
+		usedNetworks:                  map[string]bool{},
+		restartFlag:                   opts.restart,
+		volumeNameToPath:              map[string]string{},
+		includeServiceNames:           opts.serviceNames,
+		project:                       project,
 	}
 	err = ctx.parseNetworks()
 	if err != nil {
@@ -72,6 +78,18 @@ func Decompose(opts *Options) (commands []string, err error) {
 			commands = append(commands, command)
 		}
 		command = ctx.runCommandsByName[serviceName]
+		if command != "" {
+			commands = append(commands, command)
+		}
+		command = ctx.stopContainersCommandByName[serviceName]
+		if command != "" {
+			commands = append(commands, command)
+		}
+		command = ctx.removeContainersCommandByName[serviceName]
+		if command != "" {
+			commands = append(commands, command)
+		}
+		command = ctx.removeImagesCommandByName[serviceName]
 		if command != "" {
 			commands = append(commands, command)
 		}
@@ -166,6 +184,21 @@ func (ctx *context) parseServices() error {
 			}
 		}
 
+		stopExistingContainersCommand := ctx.constructStopExistingContainersCommand(serviceName)
+		if stopExistingContainersCommand != "" {
+			ctx.stopContainersCommandByName[serviceName] = stopExistingContainersCommand
+		}
+
+		removeExistingContainerCommand := ctx.constructRemoveExistingContainerCommand(serviceName)
+		if removeExistingContainerCommand != "" {
+			ctx.removeContainersCommandByName[serviceName] = removeExistingContainerCommand
+		}
+
+		removeImageCommand := ctx.constructRemoveImageCommand(serviceName)
+		if removeImageCommand != "" {
+			ctx.removeImagesCommandByName[serviceName] = removeImageCommand
+		}
+
 		runCommand := ctx.constructRunCommand(&service, imageName)
 		if runCommand != "" {
 			ctx.runCommandsByName[serviceName] = runCommand
@@ -178,6 +211,75 @@ func (ctx *context) parseServices() error {
 	}
 
 	return nil
+}
+
+func (ctx *context) constructStopExistingContainersCommand(serviceName string) string {
+	builder := &strings.Builder{}
+	builder.WriteString("docker stop ")
+
+	var containerName string
+	for _, service := range ctx.project.Services {
+		if service.Name == serviceName {
+			if service.ContainerName != "" {
+				containerName = service.ContainerName
+			} else {
+				containerName = service.Name
+			}
+			break
+		}
+	}
+
+	if containerName == "" {
+		return ""
+	}
+
+	builder.WriteString(containerName)
+	return builder.String()
+}
+
+func (ctx *context) constructRemoveExistingContainerCommand(serviceName string) string {
+	builder := &strings.Builder{}
+	builder.WriteString("docker rm ")
+
+	var containerName string
+	for _, service := range ctx.project.Services {
+		if service.Name == serviceName {
+			if service.ContainerName != "" {
+				containerName = service.ContainerName
+			} else {
+				containerName = service.Name
+			}
+			break
+		}
+	}
+
+	if containerName == "" {
+		return ""
+	}
+
+	builder.WriteString(containerName)
+	return builder.String()
+}
+
+func (ctx *context) constructRemoveImageCommand(serviceName string) string {
+	var imageName string
+	for _, service := range ctx.project.Services {
+		if service.Name == serviceName {
+			if service.Image != "" {
+				imageName = service.Image
+			} else {
+				imageName = service.Name
+			}
+			break
+		}
+	}
+
+	if imageName == "" {
+		return ""
+	}
+
+	nameWithoutTag := strings.Split(imageName, ":")[0]
+	return fmt.Sprintf("docker rmi $(docker images --filter=reference='%s' -q)", nameWithoutTag)
 }
 
 func (ctx *context) constructBuildCommand(build *types.BuildConfig, imageName string) string {
