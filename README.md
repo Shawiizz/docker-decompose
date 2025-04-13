@@ -9,7 +9,7 @@ Tool to convert `docker-compose` files to set of simple `docker` commands.
 Use `go get` to install the latest version of the library.
 
 ```bash
-go install github.com/reallyliri/docker-decompose@latest
+go install github.com/shawiizz/docker-decompose@latest
 ```
 
 ## Usage
